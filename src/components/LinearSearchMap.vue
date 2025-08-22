@@ -84,6 +84,8 @@ const showTrails = ref(false)
 // Map state - Use a compound key for uniqueness
 const activeMarkers = new Map<string, { marker: L.CircleMarker, timestamp: number }>()
 const markerPool: L.CircleMarker[] = [] // Reuse markers for performance
+const MAX_MARKERS = 100 // Keep up to 100 markers on screen
+const MARKER_PERSIST_TIME = 10 * 60 * 1000 // Keep markers for 10 minutes of playback time
 
 // Stats
 const stats = ref({
@@ -198,10 +200,26 @@ function updateDots(searches: any[]) {
     if (t > latestTime) latestTime = t
   })
 
-  // If we have a latest time, use it as reference for the cutoff
-  const cutoffTime = latestTime ? latestTime - props.timeWindow : 0
+  // Use a longer persist time for markers (10 minutes of playback time)
+  const cutoffTime = latestTime ? latestTime - MARKER_PERSIST_TIME : 0
 
-  console.log(`⏰ Time window: showing searches after ${new Date(cutoffTime).toLocaleTimeString()}`)
+  console.log(`⏰ Keeping markers from last ${MARKER_PERSIST_TIME / 60000} minutes`)
+  console.log(`📍 Current markers: ${activeMarkers.size}, Max: ${MAX_MARKERS}`)
+
+  // If we have too many markers, remove the oldest ones
+  if (activeMarkers.size > MAX_MARKERS) {
+    // Sort markers by timestamp and remove oldest
+    const sortedMarkers = Array.from(activeMarkers.entries())
+      .sort((a, b) => a[1].timestamp - b[1].timestamp)
+
+    const toRemove = sortedMarkers.slice(0, activeMarkers.size - MAX_MARKERS)
+    toRemove.forEach(([id, data]) => {
+      data.marker.remove()
+      markerPool.push(data.marker)
+      activeMarkers.delete(id)
+    })
+    console.log(`🗑️ Removed ${toRemove.length} old markers to stay under limit`)
+  }
 
   // Remove expired markers based on the playback time
   activeMarkers.forEach((data, id) => {
@@ -223,12 +241,6 @@ function updateDots(searches: any[]) {
 
     const searchTime = new Date(search.timestamp).getTime()
 
-    // Only show if within time window (based on playback time)
-    if (searchTime < cutoffTime) {
-      console.log(`⏭️ Skipping old search from ${new Date(searchTime).toLocaleTimeString()}`)
-      return
-    }
-
     // Create unique key using qid and timestamp
     const uniqueKey = `${search.qid}_${search.timestamp}`
 
@@ -238,14 +250,20 @@ function updateDots(searches: any[]) {
     // Get marker from pool or create new
     let marker = markerPool.pop()
 
+    // Calculate radius based on search radius (scale from 4 to 12 pixels)
+    const markerRadius = Math.min(12, Math.max(4, 4 + (search.radius_miles / 12.5)))
+
     if (!marker) {
       // Create new marker
       marker = L.circleMarker([0, 0], {
-        radius: 6,
+        radius: markerRadius,
         weight: 1,
         opacity: 0.8,
         fillOpacity: 0.6
       })
+    } else {
+      // Update radius for reused marker
+      marker.setRadius(markerRadius)
     }
 
     // Configure marker
@@ -253,18 +271,22 @@ function updateDots(searches: any[]) {
     marker.setLatLng([search.latitude, search.longitude])
     marker.setStyle({
       fillColor: color,
-      color: color
+      color: color,
+      radius: markerRadius
     })
 
     // Add to map
     marker.addTo(markersLayer!)
 
-    // Simple popup
+    // Enhanced popup with more info
     marker.bindPopup(`
       <div class="text-sm">
         <strong>${search.locality || 'Unknown'}</strong><br>
         ${search.administrative_area || ''}<br>
-        ${search.num_found} results • ${search.radius_miles}mi
+        <span style="color: ${color}">
+          ${search.num_found} results
+        </span><br>
+        Search radius: ${search.radius_miles}mi
       </div>
     `)
 
@@ -280,7 +302,7 @@ function updateDots(searches: any[]) {
     }
 
     // Animate entrance
-    animateMarkerEntrance(marker)
+    animateMarkerEntrance(marker, markerRadius)
   })
 
   stats.value.active = activeMarkers.size
@@ -356,15 +378,15 @@ function updateClusters(searches: any[]) {
 }
 
 // Animate marker entrance
-function animateMarkerEntrance(marker: L.CircleMarker) {
-  // Start small and grow
+function animateMarkerEntrance(marker: L.CircleMarker, targetRadius: number) {
+  // Start small and grow to target radius
   marker.setRadius(2)
 
   let radius = 2
-  const targetRadius = 6
+  const growStep = (targetRadius - 2) / 10
 
   const grow = setInterval(() => {
-    radius += 0.5
+    radius += growStep
     if (radius >= targetRadius) {
       radius = targetRadius
       clearInterval(grow)
@@ -410,7 +432,7 @@ let updateInterval: number | null = null
 
 function startUpdateLoop() {
   updateInterval = window.setInterval(() => {
-    // Remove expired markers
+    // Remove expired markers or limit to MAX_MARKERS
     if (displayMode.value === 'dots' && props.searches.length > 0) {
       // Get the latest timestamp from current searches
       let latestTime = 0
@@ -419,8 +441,9 @@ function startUpdateLoop() {
         if (t > latestTime) latestTime = t
       })
 
-      const cutoffTime = latestTime - props.timeWindow
+      const cutoffTime = latestTime - MARKER_PERSIST_TIME
 
+      // Remove old markers that are beyond the persist time
       activeMarkers.forEach((data, id) => {
         if (data.timestamp < cutoffTime) {
           // Fade out before removing
@@ -434,6 +457,24 @@ function startUpdateLoop() {
           }, 500)
         }
       })
+
+      // Also enforce MAX_MARKERS limit
+      if (activeMarkers.size > MAX_MARKERS) {
+        const sortedMarkers = Array.from(activeMarkers.entries())
+          .sort((a, b) => a[1].timestamp - b[1].timestamp)
+
+        const toRemove = sortedMarkers.slice(0, activeMarkers.size - MAX_MARKERS)
+        toRemove.forEach(([id, data]) => {
+          const marker = data.marker
+          marker.setStyle({ opacity: 0.3, fillOpacity: 0.1 })
+
+          setTimeout(() => {
+            marker.remove()
+            markerPool.push(marker)
+            activeMarkers.delete(id)
+          }, 500)
+        })
+      }
 
       stats.value.active = activeMarkers.size
     }

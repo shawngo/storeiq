@@ -29,6 +29,8 @@
             <option :value="5">5x speed</option>
             <option :value="10">10x speed</option>
             <option :value="60">1 min/sec</option>
+            <option :value="300">5 min/sec</option>
+            <option :value="1800">30 min/sec</option>
             <option :value="3600">1 hour/sec</option>
             <option :value="86400">1 day/sec</option>
           </select>
