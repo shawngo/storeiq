@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+/* StoreIQ Custom Theme - Tailwind 4 Style! */
+@theme {
+  --color-storeiq-purple: #667eea;
+  --color-storeiq-pink: #764ba2;
+  --color-storeiq-gold: #f6ad55;
+  --color-storeiq-red: #f56565;
+  --color-storeiq-green: #48bb78;
+
+  --font-family-display: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+/* Custom utilities */
+@layer utilities {
+  .gradient-storeiq {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  }
+
+  .text-gradient {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .pulse-red {
+    animation: pulse-red 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulse-red {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.5;
+      transform: scale(1.5);
+    }
+  }
+}
