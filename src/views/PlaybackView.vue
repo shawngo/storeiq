@@ -40,9 +40,14 @@
           <span v-else>⏸ PAUSE</span>
         </button>
 
-        <div class="text-white/60 text-sm ml-2">
+        <button @click="resetPlayback"
+          class="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg font-medium transition-all">
+          🔄 Reset
+        </button>
+
+        <!-- <div class="text-white/60 text-sm ml-2">
           Playing at <span class="font-bold text-white">{{ playbackSpeed }}x</span> speed
-        </div>
+        </div> -->
       </div>
 
       <!-- Filters -->
@@ -119,8 +124,11 @@
       <div class="col-span-2">
         <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-6 h-[600px]">
           <h3 class="text-xl font-bold text-white mb-4">Geographic Visualization</h3>
-          <SearchMap :current-searches="visibleSearches" :persist-pings="persistPings"
-            :show-success="filters.showSuccess" :show-limited="filters.showLimited"
+          <SearchMap ref="searchMapRef"
+            :current-searches="visibleSearches"
+            :persist-pings="persistPings"
+            :show-success="filters.showSuccess"
+            :show-limited="filters.showLimited"
             :show-no-results="filters.showNoResults" />
         </div>
       </div>
@@ -137,7 +145,8 @@
                 {{ formatTimestamp(search.timestamp) }}
               </div>
               <div class="text-sm text-white font-medium">
-                {{ search.locality || 'Unknown' }}, {{ search.administrative_area || search.country }}
+                {{ search.locality || 'Unknown' }}<span v-if="search.administrative_area">, {{ search.administrative_area }}</span>
+                <span v-if="!search.administrative_area && search.country">, {{ search.country }}</span>
               </div>
               <div class="flex items-center gap-2 mt-1">
                 <span class="text-xs text-white/60">Radius: {{ search.radius_miles }}mi</span>
@@ -178,6 +187,7 @@ import TimelineChart from '../components/TimelineChart.vue'
 import SearchMap from '../components/SearchMap.vue'
 
 const store = usePlaybackStore()
+const searchMapRef = ref()
 
 // State
 const startDate = ref('2024-01-01')
@@ -199,6 +209,23 @@ const filters = ref({
   showNoResults: true
 })
 
+const resetPlayback = () => {
+  // Stop playback
+  stopPlayback()
+
+  // Reset indices
+  currentPlaybackIndex.value = 0
+  currentTime.value = null
+  visibleSearches.value = []
+
+  // Clear the map
+  if (searchMapRef.value) {
+    searchMapRef.value.clearAllMarkers()
+  }
+
+  console.log('🔄 Playback reset!')
+}
+
 // Computed
 const searchesPlayed = computed(() => currentPlaybackIndex.value)
 const totalInRange = computed(() => store.stats.total)
@@ -219,66 +246,105 @@ const currentDateDisplay = computed(() => {
   return format(currentTime.value, 'EEEE, MMMM d, yyyy')
 })
 
+// Update the recentSearches computed to use currentPlaybackIndex
 const recentSearches = computed(() => {
-  // Show last 10 searches that have been played
-  const played = store.searches.slice(0, currentPlaybackIndex.value)
-  return played.slice(-10).reverse()
+  // Get the last 10 searches UP TO current playback index
+  if (currentPlaybackIndex.value === 0) return []
+
+  const endIndex = Math.min(currentPlaybackIndex.value, store.searches.length)
+  const startIndex = Math.max(0, endIndex - 10)
+
+  return store.searches.slice(startIndex, endIndex).reverse()
 })
 
 // PLAYBACK ENGINE!!!
 const startPlayback = () => {
   console.log('🎮 STARTING PLAYBACK!')
 
+  // Clear visible searches when restarting
   if (currentPlaybackIndex.value >= store.searches.length) {
     currentPlaybackIndex.value = 0
     visibleSearches.value = []
   }
 
-  // More reasonable speed calculation
-  // At 1x speed, play through all data in 2 minutes (120 seconds)
-  const totalDuration = 120000 // 2 minutes at 1x
-  const searchesPerSecond = store.searches.length / 120
-  const searchesPerInterval = Math.max(1, Math.floor(searchesPerSecond / 4)) // Update 4 times per second
-  const interval = 250 / playbackSpeed.value // Update every 250ms, adjusted by speed
+  const interval = 100 / playbackSpeed.value // Simple interval calculation
 
   playbackInterval.value = window.setInterval(() => {
-    // Process batch of searches
-    const batchSize = Math.ceil(searchesPerInterval * playbackSpeed.value)
+    // Process a reasonable batch
+    const batchSize = Math.ceil(10 * playbackSpeed.value) // 10 searches per interval at 1x
 
-    for (let i = 0; i < batchSize; i++) {
-      if (currentPlaybackIndex.value >= store.searches.length) {
-        stopPlayback()
-        console.log('🏁 Playback complete!')
-        return
+    let addedToMap = 0
+
+    for (let i = 0; i < batchSize && currentPlaybackIndex.value < store.searches.length; i++) {
+      const search = store.searches[currentPlaybackIndex.value]
+
+
+      if (currentPlaybackIndex.value === 275) {
+        console.log('🔍 At index 275, search:', search)
       }
 
-      const search = store.searches[currentPlaybackIndex.value]
+      // Check for invalid data
+      if (!search) {
+        console.error('❌ No search at index:', currentPlaybackIndex.value)
+        currentPlaybackIndex.value++
+        continue
+      }
+
+      if (!search.timestamp) {
+        console.error('❌ Search missing timestamp at index:', currentPlaybackIndex.value)
+        currentPlaybackIndex.value++
+        continue
+      }
+
+      // Safely handle the timestamp
+      try {
+        currentTime.value = new Date(search.timestamp)
+      } catch (e) {
+        console.error('❌ Invalid timestamp at index:', currentPlaybackIndex.value, e)
+        currentPlaybackIndex.value++
+        continue
+      }
+
       currentTime.value = new Date(search.timestamp)
 
-      // Sample the searches (don't show EVERY one or map explodes)
-      // At high speeds, sample less frequently
-      const sampleRate = playbackSpeed.value > 2 ? 20 : 10
-
-      if (currentPlaybackIndex.value % sampleRate === 0) {
+      // Only add some searches to map to prevent overwhelming it
+      if (addedToMap < 3) { // Max 3 per batch to map
         const shouldShow =
           (filters.value.showNoResults && search.num_found === 0) ||
           (filters.value.showLimited && search.num_found > 0 && search.num_found <= 3) ||
           (filters.value.showSuccess && search.num_found > 3)
 
         if (shouldShow && search.latitude && search.longitude) {
-          visibleSearches.value.push({
+          const safeSearch = {
             ...search,
-            addedAt: Date.now()
-          })
+            locality: search.locality || 'Unknown',
+            administrative_area: search.administrative_area || '',
+            country: search.country || 'US',
+            ip_address: search.ip_address || 'Unknown',
+            radius_miles: search.radius_miles || 50,
+            num_found: search.num_found || 0
+          }
+          visibleSearches.value.push(safeSearch)
+          addedToMap++
         }
       }
 
       currentPlaybackIndex.value++
+
+      // Log every 100 searches
+      if (currentPlaybackIndex.value % 100 === 0) {
+        console.log(`📍 Playback at ${currentPlaybackIndex.value} / ${store.searches.length}`)
+      }
     }
 
-    // Limit visible searches to prevent memory issues
-    if (!persistPings.value && visibleSearches.value.length > 50) {
-      visibleSearches.value = visibleSearches.value.slice(-50)
+    // Keep array size manageable
+    if (visibleSearches.value.length > 100) {
+      visibleSearches.value = visibleSearches.value.slice(-100)
+    }
+
+    if (currentPlaybackIndex.value >= store.searches.length) {
+      stopPlayback()
+      console.log('🏁 Playback complete!')
     }
 
   }, interval)
@@ -325,6 +391,11 @@ onMounted(async () => {
   console.log('🎬 PlaybackView mounted')
   await store.fetchPlaybackData(startDate.value, endDate.value)
   console.log('✅ Ready to play', store.searches.length, 'searches!')
+
+  for (let i = 220; i < 270; i++) {
+    console.log(`🔍 Search at index ${i}:`, store.searches[i])
+  }
+
 })
 
 // Format helpers for the feed

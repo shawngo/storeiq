@@ -51,8 +51,15 @@ const counters = reactive({
   total: 0
 })
 
+const MAX_ACTIVE_MARKERS = 200  // Limit total markers on map
+const MAX_PERSIST_MARKERS = 500  // Higher limit for persist mode
+
+// Track all markers (not just for timeout)
+const allMarkers = new Set<L.CircleMarker>()
+
 // Track active pings for cleanup
 const activePings = new Map<string, { marker: L.CircleMarker, timeout: number }>()
+
 
 onMounted(() => {
   if (!mapContainer.value) return
@@ -76,12 +83,22 @@ onMounted(() => {
 })
 
 // Watch for new searches
-watch(() => props.currentSearches, (newSearches) => {
-  if (!map || !pingLayer) return
+watch(() => props.currentSearches.length, (newLength, oldLength) => {
+  if (!map || !pingLayer || newLength <= oldLength) return
 
-  // Add new pings
+  console.log(`📍 SearchMap: ${oldLength} -> ${newLength} searches`)
+
+  if (!map || !pingLayer || newLength <= oldLength) {
+    console.log('⚠️ Skipping update - map not ready or no new searches')
+    return
+  }
+
+  // Only process NEW searches (ones added since last check)
+  const newSearches = props.currentSearches.slice(oldLength)
+
+  console.log(`🆕 Processing ${newSearches.length} new searches`)
+
   newSearches.forEach(search => {
-    // Check if we should show this type
     const shouldShow =
       (props.showSuccess && search.num_found > 3) ||
       (props.showLimited && search.num_found > 0 && search.num_found <= 3) ||
@@ -89,12 +106,35 @@ watch(() => props.currentSearches, (newSearches) => {
 
     if (!shouldShow) return
 
-    addPing(search)
+    // Add a small delay to prevent overwhelming the map
+    setTimeout(() => {
+      addPing(search)
+    }, Math.random() * 100) // Stagger the pings slightly
   })
-}, { deep: true })
+})
+
 
 function addPing(search: any) {
   if (!map || !pingLayer) return
+
+  // Check if we've hit the limit
+  const currentLimit = props.persistPings ? MAX_PERSIST_MARKERS : MAX_ACTIVE_MARKERS
+
+  if (allMarkers.size >= currentLimit) {
+    // Remove oldest markers to make room
+    const markersToRemove = Math.floor(currentLimit * 0.2) // Remove 20% of oldest
+    const markers = Array.from(allMarkers)
+
+    for (let i = 0; i < markersToRemove && i < markers.length; i++) {
+      const oldMarker = markers[i]
+      if (pingLayer && oldMarker) {
+        pingLayer.removeLayer(oldMarker)
+        allMarkers.delete(oldMarker)
+      }
+    }
+
+    console.log(`🧹 Cleaned up ${markersToRemove} old markers`)
+  }
 
   // Determine color based on results
   let color = '#10b981' // green
@@ -111,32 +151,26 @@ function addPing(search: any) {
   counters[category]++
   counters.total++
 
-  // Create the ping with ripple effect
+  // Create the ping
   const ping = L.circleMarker([search.latitude, search.longitude], {
     radius: 8,
     fillColor: color,
     color: color,
     weight: 2,
     opacity: 0.8,
-    fillOpacity: 0.6,
-    className: 'search-ping'
+    fillOpacity: 0.6
   }).addTo(pingLayer)
 
-  // Add ripple animation via CSS class
-  const pingElement = ping.getElement()
-  if (pingElement) {
-    pingElement.style.animation = 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite'
-  }
+  // Track this marker
+  allMarkers.add(ping)
 
-  // Popup content
+  // Popup content (simplified to reduce memory)
   const popupContent = `
     <div class="bg-gray-900 text-white p-2 rounded">
-      <div class="font-bold text-sm">${search.locality || 'Unknown'}, ${search.administrative_area || search.country}</div>
-      <div class="text-xs text-gray-400 mt-1">
-        <div>Radius: ${search.radius_miles}mi</div>
-        <div>Results: ${search.num_found === 0 ? 'None' : search.num_found}</div>
-        <div>IP: <a href="https://ipinfo.io/${search.ip_address}" target="_blank" class="text-blue-400 hover:text-blue-300">${search.ip_address}</a></div>
+      <div class="font-bold text-sm">
+        ${search.locality || 'Unknown'}${search.administrative_area ? ', ' + search.administrative_area : ''}
       </div>
+      <div class="text-xs mt-1">Results: ${search.num_found !== undefined ? search.num_found : 'N/A'}</div>
     </div>
   `
 
@@ -145,23 +179,20 @@ function addPing(search: any) {
     closeButton: false
   })
 
-
+  // Handle removal/persistence
   if (!props.persistPings) {
-    // Remove after 5 seconds
-    const timeout = setTimeout(() => {
+    setTimeout(() => {
       if (pingLayer && ping) {
         pingLayer.removeLayer(ping)
-        activePings.delete(pingKey)
+        allMarkers.delete(ping)
         counters[category]--
         counters.total--
       }
     }, 5000)
-
-    activePings.set(pingKey, { marker: ping, timeout })
   } else {
-    // If persisting, shrink the marker after initial display
+    // Shrink persistent markers
     setTimeout(() => {
-      ping.setRadius(4) // Shrink to half size
+      ping.setRadius(4)
       ping.setStyle({
         opacity: 0.6,
         fillOpacity: 0.4
@@ -169,42 +200,24 @@ function addPing(search: any) {
     }, 3000)
   }
 
+  // Skip radius circles for now (they add too many layers)
+  // Or make them very temporary
+  if (Math.random() < 0.1) { // Only show radius for 10% of searches
+    const radiusCircle = L.circle([search.latitude, search.longitude], {
+      radius: search.radius_miles * 1609.34,
+      fillColor: color,
+      color: color,
+      weight: 1,
+      opacity: 0.1,
+      fillOpacity: 0.02
+    }).addTo(pingLayer)
 
-  // Generate unique key for this ping
-  const pingKey = `${search.qid}-${Date.now()}`
-
-  // Auto-remove after a few seconds (unless persist is on)
-  if (!props.persistPings) {
-    const timeout = setTimeout(() => {
-      if (pingLayer && ping) {
-        pingLayer.removeLayer(ping)
-        activePings.delete(pingKey)
-
-        // Decrement counters
-        counters[category]--
-        counters.total--
+    setTimeout(() => {
+      if (pingLayer && radiusCircle) {
+        pingLayer.removeLayer(radiusCircle)
       }
-    }, 5000) // Remove after 5 seconds
-
-    activePings.set(pingKey, { marker: ping, timeout })
+    }, 1000) // Remove quickly
   }
-
-  // Also add a radius circle to show search area (subtle)
-  const radiusCircle = L.circle([search.latitude, search.longitude], {
-    radius: search.radius_miles * 1609.34, // Convert miles to meters
-    fillColor: color,
-    color: color,
-    weight: 1,
-    opacity: 0.2,
-    fillOpacity: 0.05
-  }).addTo(pingLayer)
-
-  // Remove radius circle quickly
-  setTimeout(() => {
-    if (pingLayer && radiusCircle) {
-      pingLayer.removeLayer(radiusCircle)
-    }
-  }, 2000)
 }
 
 // Reset counters every 30 seconds
@@ -214,6 +227,24 @@ const counterInterval = setInterval(() => {
   counters.failed = 0
   counters.total = 0
 }, 30000)
+
+const clearAllMarkers = () => {
+  if (pingLayer) {
+    pingLayer.clearLayers()
+  }
+  allMarkers.clear()
+  counters.successful = 0
+  counters.limited = 0
+  counters.failed = 0
+  counters.total = 0
+  console.log('🗑️ Cleared all markers')
+}
+
+// Expose the clear method for parent component
+defineExpose({
+  clearAllMarkers
+})
+
 
 onUnmounted(() => {
   // Clean up
