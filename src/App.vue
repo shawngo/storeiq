@@ -17,22 +17,16 @@
           </div>
 
           <div class="flex items-center space-x-4">
-            <button
-              @click="currentView = 'dashboard'"
-              :class="viewButtonClass('dashboard')"
-            >
+            <button @click="currentView = 'dashboard'" :class="viewButtonClass('dashboard')">
               📊 Dashboard
             </button>
-            <button
-              @click="currentView = 'playback'"
-              :class="viewButtonClass('playback')"
-            >
-              ▶️ Playback
+            <button @click="currentView = 'playback'" :class="viewButtonClass('playback')">
+              ▶️ Playback (Original)
             </button>
-            <button
-              @click="currentView = 'insights'"
-              :class="viewButtonClass('insights')"
-            >
+            <button @click="currentView = 'linear'" :class="viewButtonClass('linear')">
+              ⏰ Linear Time
+            </button>
+            <button @click="currentView = 'insights'" :class="viewButtonClass('insights')">
               💡 Insights
             </button>
           </div>
@@ -50,6 +44,11 @@
       <!-- Playback View -->
       <div v-else-if="currentView === 'playback'" class="p-6">
         <PlaybackView />
+      </div>
+
+      <!-- Linear Playback View -->
+      <div v-else-if="currentView === 'linear'" class="p-6">
+        <LinearPlaybackView />
       </div>
 
       <!-- Insights View -->
@@ -82,13 +81,14 @@ import { ref, computed, onMounted } from 'vue'
 import { usePlaybackStore } from './stores/playback'
 import DashboardView from './views/DashboardView.vue'
 import PlaybackView from './views/PlaybackView.vue'
+import LinearPlaybackView from './views/LinearPlaybackView.vue'
 import InsightsView from './views/InsightsView.vue'
 
 // Store
 const store = usePlaybackStore()
 
 // State
-const currentView = ref<'dashboard' | 'playback' | 'insights'>('playback')
+const currentView = ref<'dashboard' | 'playback' | 'linear' | 'insights'>('linear')
 const isDev = import.meta.env.DEV
 const apiUrl = import.meta.env.VITE_API_URL
 
