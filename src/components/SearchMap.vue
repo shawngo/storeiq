@@ -84,47 +84,64 @@ onMounted(() => {
 
 // Watch for new searches
 watch(() => props.currentSearches.length, (newLength, oldLength) => {
-  if (!map || !pingLayer || newLength <= oldLength) return
+  console.log(`📍 SearchMap watch triggered: ${oldLength} -> ${newLength} searches`)
 
-  console.log(`📍 SearchMap: ${oldLength} -> ${newLength} searches`)
+  if (!map || !pingLayer) {
+    console.error('❌ Map or pingLayer not initialized!')
+    return
+  }
 
-  if (!map || !pingLayer || newLength <= oldLength) {
-    console.log('⚠️ Skipping update - map not ready or no new searches')
+  if (newLength <= oldLength) {
+    console.log('⚠️ No new searches to add (newLength <= oldLength)')
     return
   }
 
   // Only process NEW searches (ones added since last check)
   const newSearches = props.currentSearches.slice(oldLength)
-
   console.log(`🆕 Processing ${newSearches.length} new searches`)
+  console.log(`📊 Current marker count: ${allMarkers.size}`)
 
-  newSearches.forEach(search => {
+  newSearches.forEach((search, index) => {
     const shouldShow =
       (props.showSuccess && search.num_found > 3) ||
       (props.showLimited && search.num_found > 0 && search.num_found <= 3) ||
       (props.showNoResults && search.num_found === 0)
 
-    if (!shouldShow) return
+    if (!shouldShow) {
+      console.log(`⏭️ Skipping search ${index} - filtered out`)
+      return
+    }
 
     // Add a small delay to prevent overwhelming the map
     setTimeout(() => {
+      console.log(`➕ Adding ping for ${search.locality || 'Unknown'} (${search.latitude}, ${search.longitude})`)
       addPing(search)
-    }, Math.random() * 100) // Stagger the pings slightly
+    }, Math.random() * 100)
+
+    // Log final state
+    setTimeout(() => {
+      console.log(`📍 After processing: ${allMarkers.size} total markers on map`)
+    }, 500)
+
   })
 })
 
-
 function addPing(search: any) {
-  if (!map || !pingLayer) return
+  if (!map || !pingLayer) {
+    console.error('❌ Cannot add ping - map not ready')
+    return
+  }
 
   // Check if we've hit the limit
   const currentLimit = props.persistPings ? MAX_PERSIST_MARKERS : MAX_ACTIVE_MARKERS
+  console.log(`🎯 Adding ping. Current: ${allMarkers.size}/${currentLimit}`)
 
   if (allMarkers.size >= currentLimit) {
     // Remove oldest markers to make room
     const markersToRemove = Math.floor(currentLimit * 0.2) // Remove 20% of oldest
-    const markers = Array.from(allMarkers)
+    console.log(`🧹 Cleaning up ${markersToRemove} old markers`)
 
+    const markers = Array.from(allMarkers)
     for (let i = 0; i < markersToRemove && i < markers.length; i++) {
       const oldMarker = markers[i]
       if (pingLayer && oldMarker) {
@@ -134,6 +151,7 @@ function addPing(search: any) {
     }
 
     console.log(`🧹 Cleaned up ${markersToRemove} old markers`)
+    console.log(`✅ Cleanup done. Now have ${allMarkers.size} markers`)
   }
 
   // Determine color based on results

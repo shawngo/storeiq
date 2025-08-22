@@ -284,8 +284,8 @@ const startPlayback = () => {
       }
 
       // Check for invalid data
-      if (!search) {
-        console.error('❌ No search at index:', currentPlaybackIndex.value)
+      if (!search || typeof search !== 'object') {
+        console.error('❌ Invalid search object at index:', currentPlaybackIndex.value)
         currentPlaybackIndex.value++
         continue
       }
@@ -331,6 +331,14 @@ const startPlayback = () => {
 
       currentPlaybackIndex.value++
 
+      // Log progress every 50 searches
+      if (currentPlaybackIndex.value % 50 === 0) {
+        console.log(`📍 Playback Progress:`)
+        console.log(`  - Index: ${currentPlaybackIndex.value} / ${store.searches.length}`)
+        console.log(`  - Visible searches array: ${visibleSearches.value.length}`)
+        console.log(`  - Should be showing on map: ${addedToMap} new in this batch`)
+      }
+
       // Log every 100 searches
       if (currentPlaybackIndex.value % 100 === 0) {
         console.log(`📍 Playback at ${currentPlaybackIndex.value} / ${store.searches.length}`)
@@ -338,8 +346,12 @@ const startPlayback = () => {
     }
 
     // Keep array size manageable
-    if (visibleSearches.value.length > 100) {
-      visibleSearches.value = visibleSearches.value.slice(-100)
+    if (visibleSearches.value.length > 500) {
+      visibleSearches.value = visibleSearches.value.slice(-500)
+    }
+
+    if (visibleSearches.value.length > 500) {
+      console.log('⚠️ Trimming visible searches array from', visibleSearches.value.length, 'to 500')
     }
 
     if (currentPlaybackIndex.value >= store.searches.length) {
@@ -348,6 +360,9 @@ const startPlayback = () => {
     }
 
   }, interval)
+
+  // Do we need this!?
+  isPlaying.value = true
 }
 
 
