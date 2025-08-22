@@ -1,78 +1,67 @@
 <template>
   <div class="relative w-full h-full">
+    <!-- Map Container -->
     <div ref="mapContainer" class="w-full h-full rounded-lg"></div>
 
-    <!-- Map Controls Overlay -->
-    <div class="absolute top-4 left-4 bg-black/50 backdrop-blur-lg rounded-lg p-3 z-[1000]">
-      <div class="text-white text-sm font-bold mb-2">Display Mode</div>
-      <div class="space-y-2">
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="radio" v-model="displayMode" value="dots"
-            class="text-storeiq-green" />
-          <span class="text-white text-xs">Live Dots</span>
-        </label>
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="radio" v-model="displayMode" value="heatmap"
-            class="text-storeiq-green" />
-          <span class="text-white text-xs">Heat Map</span>
-        </label>
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="radio" v-model="displayMode" value="clusters"
-            class="text-storeiq-green" />
-          <span class="text-white text-xs">Clusters</span>
-        </label>
+    <!-- Display Mode Toggle -->
+    <div class="absolute top-4 left-4 bg-black/50 backdrop-blur-lg rounded-lg p-2 z-[1000]">
+      <div class="flex gap-1">
+        <button @click="displayMode = 'dots'"
+          :class="['px-3 py-1 rounded text-xs font-medium transition-all',
+            displayMode === 'dots' ? 'bg-white/20 text-white' : 'text-white/70 hover:text-white']">
+          Live Dots
+        </button>
+        <button @click="displayMode = 'heatmap'"
+          :class="['px-3 py-1 rounded text-xs font-medium transition-all',
+            displayMode === 'heatmap' ? 'bg-white/20 text-white' : 'text-white/70 hover:text-white']">
+          Heat Map
+        </button>
+        <button @click="displayMode = 'clusters'"
+          :class="['px-3 py-1 rounded text-xs font-medium transition-all',
+            displayMode === 'clusters' ? 'bg-white/20 text-white' : 'text-white/70 hover:text-white']">
+          Clusters
+        </button>
       </div>
-
-      <div class="mt-3 pt-3 border-t border-white/20">
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" v-model="showTrails"
-            class="rounded text-storeiq-purple" />
-          <span class="text-white text-xs">Show trails</span>
-        </label>
-      </div>
+      <label class="flex items-center gap-2 mt-2">
+        <input type="checkbox" v-model="showTrails" class="rounded">
+        <span class="text-white text-xs">Show trails</span>
+      </label>
     </div>
 
-    <!-- Live Stats Overlay -->
+    <!-- Live Activity Display -->
     <div class="absolute top-4 right-4 bg-black/50 backdrop-blur-lg rounded-lg p-3 z-[1000]">
       <div class="text-white text-sm font-bold mb-2">Live Activity</div>
       <div class="space-y-1">
-        <div class="flex items-center gap-2">
-          <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          <span class="text-green-400 text-xs">{{ stats.active }} active</span>
+        <div class="text-white text-xs">
+          <span class="text-green-400">●</span> {{ stats.active }} active
         </div>
-        <div class="flex items-center gap-2">
-          <div class="w-2 h-2 bg-yellow-500 rounded-full"></div>
-          <span class="text-yellow-400 text-xs">{{ stats.rate }}/min rate</span>
+        <div class="text-white text-xs">
+          <span class="text-yellow-400">●</span> {{ stats.rate }}/min rate
         </div>
-        <div class="flex items-center gap-2">
-          <div class="w-2 h-2 bg-purple-500 rounded-full"></div>
-          <span class="text-purple-400 text-xs">{{ stats.total }} total</span>
+        <div class="text-white text-xs">
+          <span class="text-blue-400">●</span> {{ stats.total }} total
         </div>
       </div>
-
-      <!-- Mini histogram -->
-      <div class="mt-3 pt-3 border-t border-white/20">
-        <div class="text-white text-xs mb-1">Activity (last 10 min)</div>
-        <div class="flex items-end gap-0.5 h-8">
-          <div v-for="(count, i) in histogram" :key="i"
-            class="flex-1 bg-storeiq-green/50 rounded-t"
-            :style="`height: ${(count / maxHistogram) * 100}%`">
-          </div>
+      <div class="text-white/60 text-xs mt-2">
+        Activity (last 10 min)
+      </div>
+      <div class="flex gap-px h-8 items-end mt-1">
+        <div v-for="(count, i) in histogram" :key="i"
+          class="flex-1 bg-green-500/50 rounded-t"
+          :style="{ height: `${(count / maxHistogram) * 100}%` }">
         </div>
       </div>
     </div>
 
-    <!-- Time Window Indicator -->
-    <div class="absolute bottom-4 left-4 bg-black/50 backdrop-blur-lg rounded-lg px-3 py-2 z-[1000]">
-      <div class="text-white/60 text-xs">
-        Showing: <span class="text-white font-bold">{{ formattedTimeWindow }}</span>
-      </div>
+    <!-- Bottom Status -->
+    <div class="absolute bottom-4 left-4 text-white/60 text-xs z-[1000]">
+      Showing: {{ formattedTimeWindow }}
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -92,7 +81,7 @@ let trailsLayer: L.LayerGroup | null = null
 const displayMode = ref<'dots' | 'heatmap' | 'clusters'>('dots')
 const showTrails = ref(false)
 
-// Map state
+// Map state - Use a compound key for uniqueness
 const activeMarkers = new Map<string, { marker: L.CircleMarker, timestamp: number }>()
 const markerPool: L.CircleMarker[] = [] // Reuse markers for performance
 
@@ -109,6 +98,7 @@ const maxHistogram = computed(() => Math.max(...histogram.value, 1))
 
 // Initialize map
 onMounted(() => {
+  console.log('🗺️ LinearSearchMap mounting...')
   if (!mapContainer.value) return
 
   // Create map
@@ -131,13 +121,19 @@ onMounted(() => {
   heatmapLayer = L.layerGroup()
   trailsLayer = L.layerGroup()
 
+  console.log('🗺️ Map initialized')
+
   // Start update loop
   startUpdateLoop()
 })
 
 // Watch for new searches
 watch(() => props.searches, (newSearches) => {
-  if (!map || !markersLayer) return
+  console.log(`🗺️ Map received ${newSearches.length} searches`)
+  if (!map || !markersLayer) {
+    console.error('Map not initialized!')
+    return
+  }
 
   // Process based on display mode
   if (displayMode.value === 'dots') {
@@ -190,10 +186,24 @@ watch(showTrails, (show) => {
 function updateDots(searches: any[]) {
   if (!markersLayer) return
 
-  const now = Date.now()
-  const cutoffTime = now - props.timeWindow
+  console.log(`🔵 Updating dots with ${searches.length} searches`)
 
-  // Remove expired markers
+  // For linear playback, we want to show ALL searches passed to us
+  // The parent component manages the time window
+
+  // First, get the latest timestamp from the searches to use as reference
+  let latestTime = 0
+  searches.forEach(s => {
+    const t = new Date(s.timestamp).getTime()
+    if (t > latestTime) latestTime = t
+  })
+
+  // If we have a latest time, use it as reference for the cutoff
+  const cutoffTime = latestTime ? latestTime - props.timeWindow : 0
+
+  console.log(`⏰ Time window: showing searches after ${new Date(cutoffTime).toLocaleTimeString()}`)
+
+  // Remove expired markers based on the playback time
   activeMarkers.forEach((data, id) => {
     if (data.timestamp < cutoffTime) {
       // Return marker to pool for reuse
@@ -205,13 +215,25 @@ function updateDots(searches: any[]) {
 
   // Add new searches
   searches.forEach(search => {
+    // Validate search data
+    if (!search.latitude || !search.longitude) {
+      console.warn('Search missing lat/lng:', search)
+      return
+    }
+
     const searchTime = new Date(search.timestamp).getTime()
 
-    // Only show if within time window
-    if (searchTime < cutoffTime) return
+    // Only show if within time window (based on playback time)
+    if (searchTime < cutoffTime) {
+      console.log(`⏭️ Skipping old search from ${new Date(searchTime).toLocaleTimeString()}`)
+      return
+    }
+
+    // Create unique key using qid and timestamp
+    const uniqueKey = `${search.qid}_${search.timestamp}`
 
     // Skip if already on map
-    if (activeMarkers.has(search.qid)) return
+    if (activeMarkers.has(uniqueKey)) return
 
     // Get marker from pool or create new
     let marker = markerPool.pop()
@@ -241,12 +263,13 @@ function updateDots(searches: any[]) {
     marker.bindPopup(`
       <div class="text-sm">
         <strong>${search.locality || 'Unknown'}</strong><br>
-        ${search.num_found} results
+        ${search.administrative_area || ''}<br>
+        ${search.num_found} results • ${search.radius_miles}mi
       </div>
     `)
 
-    // Track it
-    activeMarkers.set(search.qid, {
+    // Track it with unique key
+    activeMarkers.set(uniqueKey, {
       marker,
       timestamp: searchTime
     })
@@ -261,6 +284,7 @@ function updateDots(searches: any[]) {
   })
 
   stats.value.active = activeMarkers.size
+  console.log(`🔵 Active markers: ${activeMarkers.size}`)
 }
 
 // Add trail effect
@@ -305,9 +329,10 @@ function updateHeatmap(searches: any[]) {
   const cutoffTime = now - props.timeWindow
 
   // Filter to time window
-  const recentSearches = searches.filter(s =>
-    new Date(s.timestamp).getTime() > cutoffTime
-  )
+  const recentSearches = searches.filter(s => {
+    const searchTime = new Date(s.timestamp).getTime()
+    return searchTime > cutoffTime && s.latitude && s.longitude
+  })
 
   // Create heat points
   recentSearches.forEach(search => {
@@ -354,9 +379,10 @@ function updateStats(searches: any[]) {
   const oneMinuteAgo = now - 60000
 
   // Calculate rate
-  const recentSearches = searches.filter(s =>
-    new Date(s.timestamp).getTime() > oneMinuteAgo
-  )
+  const recentSearches = searches.filter(s => {
+    const searchTime = new Date(s.timestamp).getTime()
+    return searchTime > oneMinuteAgo
+  })
 
   stats.value.rate = recentSearches.length
   stats.value.total = searches.length
@@ -385,9 +411,15 @@ let updateInterval: number | null = null
 function startUpdateLoop() {
   updateInterval = window.setInterval(() => {
     // Remove expired markers
-    if (displayMode.value === 'dots') {
-      const now = Date.now()
-      const cutoffTime = now - props.timeWindow
+    if (displayMode.value === 'dots' && props.searches.length > 0) {
+      // Get the latest timestamp from current searches
+      let latestTime = 0
+      props.searches.forEach(s => {
+        const t = new Date(s.timestamp).getTime()
+        if (t > latestTime) latestTime = t
+      })
+
+      const cutoffTime = latestTime - props.timeWindow
 
       activeMarkers.forEach((data, id) => {
         if (data.timestamp < cutoffTime) {

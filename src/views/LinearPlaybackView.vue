@@ -1,114 +1,96 @@
-// LinearPlaybackView.vue - Brand new linear time playback component
 <template>
-  <div class="max-w-7xl mx-auto">
-    <h2 class="text-3xl font-bold text-white mb-6">
-      Linear Time Playback <span class="text-gradient">Analysis</span>
-    </h2>
+  <div class="p-6">
+    <!-- Header -->
+    <div class="mb-6">
+      <h2 class="text-3xl font-bold text-white mb-2">Linear Time Playback Analysis</h2>
+    </div>
 
     <!-- Playback Controls -->
     <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-6 mb-6">
-      <div class="flex items-center gap-4">
-        <!-- Date Range Selector -->
-        <div class="flex items-center gap-2">
-          <label class="text-white/70 text-sm">From:</label>
-          <input type="date" v-model="startDate"
-            class="bg-white/10 border border-white/20 rounded px-2 py-1 text-white" />
-        </div>
-
-        <div class="flex items-center gap-2">
-          <label class="text-white/70 text-sm">To:</label>
-          <input type="date" v-model="endDate"
-            class="bg-white/10 border border-white/20 rounded px-2 py-1 text-white" />
-        </div>
-
-        <!-- Spacer -->
-        <div class="flex-1"></div>
-
-        <!-- Speed Selector -->
-        <select v-model="playbackSpeed"
-          class="bg-white/10 border border-white/20 rounded px-3 py-2 text-white">
-          <option :value="1">Real-time</option>
-          <option :value="60">1 min/sec</option>
-          <option :value="300">5 min/sec</option>
-          <option :value="900">15 min/sec</option>
-          <option :value="1800">30 min/sec</option>
-          <option :value="3600">1 hour/sec</option>
-          <option :value="7200">2 hours/sec</option>
-          <option :value="21600">6 hours/sec</option>
-          <option :value="43200">12 hours/sec</option>
-          <option :value="86400">1 day/sec</option>
-        </select>
-
-        <!-- Play/Pause Button -->
-        <button @click="togglePlayback"
-          class="px-6 py-2 bg-gradient-to-r from-storeiq-green to-storeiq-teal rounded-lg text-white font-bold hover:opacity-90 transition-all">
-          {{ isPlaying ? '⏸ PAUSE' : '▶ PLAY' }}
-        </button>
-
-        <!-- Reset Button -->
-        <button @click="resetPlayback"
-          class="px-6 py-2 bg-white/10 rounded-lg text-white hover:bg-white/20 transition-all">
-          🔄 Reset
-        </button>
-      </div>
-
-      <!-- Timeline Progress Bar -->
-      <div class="mt-6">
+      <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-4">
-          <span class="text-white text-sm w-20">
-            {{ formatTime(currentPlaybackTime) }}
-          </span>
-          <div class="flex-1 relative">
-            <div class="h-2 bg-white/20 rounded-full overflow-hidden">
-              <div class="h-full bg-gradient-to-r from-storeiq-green to-storeiq-teal transition-all duration-100"
-                :style="`width: ${timelineProgress}%`"></div>
-            </div>
-            <!-- Clickable timeline -->
-            <input type="range" min="0" max="100" v-model="timelineProgress"
-              @input="scrubTimeline"
-              class="absolute inset-0 w-full opacity-0 cursor-pointer" />
+          <div class="flex items-center gap-2">
+            <label class="text-white/60 text-sm">From:</label>
+            <input type="date" v-model="startDate"
+              class="bg-white/10 text-white px-3 py-1 rounded-lg">
           </div>
-          <span class="text-white text-sm w-20 text-right">
-            {{ formatTime(endPlaybackTime) }}
-          </span>
+          <div class="flex items-center gap-2">
+            <label class="text-white/60 text-sm">To:</label>
+            <input type="date" v-model="endDate"
+              class="bg-white/10 text-white px-3 py-1 rounded-lg">
+          </div>
+        </div>
+
+        <div class="flex items-center gap-4">
+          <select v-model="playbackSpeed"
+            class="bg-white/10 text-white px-4 py-2 rounded-lg">
+            <option :value="1">1x speed (real-time)</option>
+            <option :value="2">2x speed</option>
+            <option :value="5">5x speed</option>
+            <option :value="10">10x speed</option>
+            <option :value="60">1 min/sec</option>
+            <option :value="3600">1 hour/sec</option>
+            <option :value="86400">1 day/sec</option>
+          </select>
+
+          <button @click="togglePlayback"
+            class="px-6 py-2 rounded-lg font-medium transition-all"
+            :class="isPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'">
+            {{ isPlaying ? '⏸ PAUSE' : '▶ PLAY' }}
+          </button>
+
+          <button @click="resetPlayback"
+            class="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-all">
+            ⟲ Reset
+          </button>
+        </div>
+      </div>
+
+      <!-- Timeline Progress -->
+      <div class="relative">
+        <input type="range" min="0" max="100" :value="timelineProgress"
+          @input="scrubTimeline"
+          class="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer">
+        <div class="flex justify-between text-xs text-white/60 mt-1">
+          <span>{{ formatTime(startPlaybackTime) }}</span>
+          <span>{{ formatTime(currentPlaybackTime) }}</span>
+          <span>{{ formatTime(endPlaybackTime) }}</span>
         </div>
       </div>
     </div>
 
-    <!-- Current Time Display -->
-    <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-6 mb-6">
-      <div class="grid grid-cols-4 gap-4">
-        <div>
-          <div class="text-3xl font-bold text-white">
-            {{ currentTimeDisplay }}
-          </div>
-          <div class="text-sm text-white/60 mt-1">Current Time</div>
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-4 gap-4 mb-6">
+      <div class="bg-white/10 backdrop-blur-lg rounded-xl p-4">
+        <div class="text-4xl font-bold text-white">
+          {{ currentTimeDisplay }}
         </div>
+        <div class="text-white/60 text-sm">Current Time</div>
+      </div>
 
-        <div>
-          <div class="text-3xl font-bold text-storeiq-green">
-            {{ searchesInLastMinute }}
-          </div>
-          <div class="text-sm text-white/60 mt-1">Searches/min</div>
+      <div class="bg-white/10 backdrop-blur-lg rounded-xl p-4">
+        <div class="text-4xl font-bold text-green-400">
+          {{ searchesInLastMinute }}
         </div>
+        <div class="text-white/60 text-sm">Searches/min</div>
+      </div>
 
-        <div>
-          <div class="text-3xl font-bold text-storeiq-gold">
-            {{ peakHour }}
-          </div>
-          <div class="text-sm text-white/60 mt-1">Peak Hour</div>
+      <div class="bg-white/10 backdrop-blur-lg rounded-xl p-4">
+        <div class="text-4xl font-bold text-yellow-400">
+          {{ peakHour }}
         </div>
+        <div class="text-white/60 text-sm">Peak Hour</div>
+      </div>
 
-        <div>
-          <div class="text-3xl font-bold text-storeiq-purple">
-            {{ totalProcessed.toLocaleString() }}
-          </div>
-          <div class="text-sm text-white/60 mt-1">Total Shown</div>
+      <div class="bg-white/10 backdrop-blur-lg rounded-xl p-4">
+        <div class="text-4xl font-bold text-blue-400">
+          {{ totalProcessed }}
         </div>
+        <div class="text-white/60 text-sm">Total Shown</div>
       </div>
     </div>
 
-    <!-- Map and Stats Grid -->
+    <!-- Main Content Grid -->
     <div class="grid grid-cols-3 gap-6">
       <!-- Map (2 columns) -->
       <div class="col-span-2">
@@ -167,6 +149,14 @@
         </div>
       </div>
     </div>
+
+    <!-- Debug Info -->
+    <div v-if="showDebug" class="mt-4 p-4 bg-black/50 rounded-lg text-white/60 text-xs">
+      <div>Searches loaded: {{ store.searches.length }}</div>
+      <div>Time slots indexed: {{ searchesBySecond.size }}</div>
+      <div>Visible searches on map: {{ visibleSearches.length }}</div>
+      <div>Current time: {{ currentPlaybackTime?.toISOString() }}</div>
+    </div>
   </div>
 </template>
 
@@ -177,6 +167,9 @@ import LinearSearchMap from '../components/LinearSearchMap.vue'
 
 const store = usePlaybackStore()
 const mapRef = ref()
+
+// Debug mode
+const showDebug = ref(true)
 
 // Playback state
 const startDate = ref('2024-01-01')
@@ -215,7 +208,9 @@ const initializeTimeline = async () => {
 
   // Load data if not already loaded
   if (store.searches.length === 0) {
-    await store.fetchSearches(startDate.value, endDate.value)
+    console.log('📥 Loading data from API...')
+    await store.fetchPlaybackData(startDate.value, endDate.value)
+    console.log(`✅ Loaded ${store.searches.length} searches`)
   }
 
   // Clear existing index
@@ -239,20 +234,28 @@ const initializeTimeline = async () => {
   })
 
   // Set timeline boundaries
-  startPlaybackTime.value = new Date(minTime)
-  endPlaybackTime.value = new Date(maxTime)
-  currentPlaybackTime.value = new Date(minTime)
+  if (store.searches.length > 0) {
+    startPlaybackTime.value = new Date(minTime)
+    endPlaybackTime.value = new Date(maxTime)
+    currentPlaybackTime.value = new Date(minTime)
 
-  console.log(`📊 Timeline ready:`)
-  console.log(`   Searches: ${store.searches.length}`)
-  console.log(`   Time slots: ${searchesBySecond.value.size}`)
-  console.log(`   Start: ${startPlaybackTime.value.toLocaleString()}`)
-  console.log(`   End: ${endPlaybackTime.value.toLocaleString()}`)
+    console.log(`📊 Timeline ready:`)
+    console.log(`   Searches: ${store.searches.length}`)
+    console.log(`   Time slots: ${searchesBySecond.value.size}`)
+    console.log(`   Start: ${startPlaybackTime.value.toLocaleString()}`)
+    console.log(`   End: ${endPlaybackTime.value.toLocaleString()}`)
+  } else {
+    console.error('❌ No searches loaded!')
+  }
 }
 
 // Playback engine
 const startPlayback = () => {
-  if (!currentPlaybackTime.value || !endPlaybackTime.value) return
+  console.log('▶️ Starting linear playback')
+  if (!currentPlaybackTime.value || !endPlaybackTime.value) {
+    console.error('Timeline not initialized!')
+    return
+  }
 
   const updateInterval = 100 // Update 10 times per second
   const timeIncrement = (playbackSpeed.value * 100) // ms to advance per update
@@ -265,6 +268,7 @@ const startPlayback = () => {
 
     // Check if we've reached the end
     if (newTime >= endPlaybackTime.value) {
+      console.log('🏁 Playback complete!')
       stopPlayback()
       return
     }
@@ -295,14 +299,33 @@ const processTimeWindow = (startTime: Date, endTime: Date) => {
   }
 
   if (newSearches.length > 0) {
+    console.log(`⏱ Processing ${newSearches.length} searches at ${currentPlaybackTime.value?.toLocaleTimeString()}`)
+
+    // Debug: Check first search structure
+    if (totalProcessed.value === 0 && newSearches.length > 0) {
+      console.log('🔍 First search structure:', newSearches[0])
+      console.log('  - qid:', newSearches[0].qid)
+      console.log('  - latitude:', newSearches[0].latitude)
+      console.log('  - longitude:', newSearches[0].longitude)
+      console.log('  - timestamp:', newSearches[0].timestamp)
+    }
+
     // Add to visible searches (for map)
     visibleSearches.value.push(...newSearches)
 
+    console.log(`📍 Visible searches now: ${visibleSearches.value.length}`)
+
     // Maintain rolling window for map (e.g., last 5 minutes)
     const cutoffTime = endTime.getTime() - (mapTimeWindow.value * 60 * 1000)
+    const beforeFilter = visibleSearches.value.length
     visibleSearches.value = visibleSearches.value.filter(s =>
       new Date(s.timestamp).getTime() > cutoffTime
     )
+    const afterFilter = visibleSearches.value.length
+
+    if (beforeFilter !== afterFilter) {
+      console.log(`🔄 Filtered old searches: ${beforeFilter} -> ${afterFilter}`)
+    }
 
     // Update recent searches list
     recentSearches.value.unshift(...newSearches)
@@ -312,6 +335,12 @@ const processTimeWindow = (startTime: Date, endTime: Date) => {
     totalProcessed.value += newSearches.length
     updateHourlyStats()
   }
+
+  // Calculate searches per minute
+  const minuteAgo = currentPlaybackTime.value.getTime() - (60 * 1000)
+  searchesInLastMinute.value = visibleSearches.value.filter(s =>
+    new Date(s.timestamp).getTime() > minuteAgo
+  ).length
 }
 
 // Update hourly statistics
@@ -328,12 +357,6 @@ const updateHourlyStats = () => {
     limited: hourSearches.filter(s => s.num_found > 0 && s.num_found <= 3).length,
     failed: hourSearches.filter(s => s.num_found === 0).length
   }
-
-  // Calculate searches per minute
-  const minuteAgo = currentPlaybackTime.value.getTime() - (60 * 1000)
-  searchesInLastMinute.value = visibleSearches.value.filter(s =>
-    new Date(s.timestamp).getTime() > minuteAgo
-  ).length
 }
 
 // Playback controls
@@ -347,6 +370,7 @@ const togglePlayback = () => {
 }
 
 const stopPlayback = () => {
+  console.log('⏸ Stopping playback')
   if (playbackTimer.value) {
     clearInterval(playbackTimer.value)
     playbackTimer.value = null
@@ -355,6 +379,7 @@ const stopPlayback = () => {
 }
 
 const resetPlayback = () => {
+  console.log('🔄 Resetting playback')
   stopPlayback()
   currentPlaybackTime.value = startPlaybackTime.value
   visibleSearches.value = []
@@ -376,8 +401,11 @@ const scrubTimeline = (event: Event) => {
 
   currentPlaybackTime.value = newTime
 
-  // Optionally: Show searches from last N minutes at this point
-  // loadSearchesAtTime(newTime)
+  // Clear visible searches when scrubbing
+  visibleSearches.value = []
+
+  // Optional: Load searches at this point in time
+  // You could call processTimeWindow here with a larger window
 }
 
 const updateProgress = () => {
@@ -391,7 +419,7 @@ const updateProgress = () => {
 
 // Computed properties
 const currentTimeDisplay = computed(() => {
-  if (!currentPlaybackTime.value) return '--:--:--'
+  if (!currentPlaybackTime.value) return '--:--:-- --'
   return currentPlaybackTime.value.toLocaleTimeString()
 })
 
@@ -412,8 +440,9 @@ const getResultClass = (numFound: number) => {
 }
 
 // Lifecycle
-onMounted(() => {
-  initializeTimeline()
+onMounted(async () => {
+  console.log('🎬 LinearPlaybackView mounted')
+  await initializeTimeline()
 })
 
 onUnmounted(() => {
