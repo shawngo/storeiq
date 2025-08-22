@@ -51,8 +51,8 @@ const counters = reactive({
   total: 0
 })
 
-const MAX_ACTIVE_MARKERS = 200  // Limit total markers on map
-const MAX_PERSIST_MARKERS = 500  // Higher limit for persist mode
+const MAX_ACTIVE_MARKERS = 50  // Limit total markers on map - reduced for performance
+const MAX_PERSIST_MARKERS = 100  // Higher limit for persist mode - reduced for performance
 
 // Track all markers (not just for timeout)
 const allMarkers = new Set<L.CircleMarker>()
@@ -83,6 +83,7 @@ onMounted(() => {
 })
 
 // Watch for new searches
+/*
 watch(() => props.currentSearches.length, (newLength, oldLength) => {
   console.log(`📍 SearchMap watch triggered: ${oldLength} -> ${newLength} searches`)
 
@@ -125,8 +126,34 @@ watch(() => props.currentSearches.length, (newLength, oldLength) => {
 
   })
 })
+*/
 
-function addPing(search: any) {
+// Updated watch to handle new searches more efficiently
+watch(() => props.currentSearches.length, (newLength, oldLength) => {
+  if (!map || !pingLayer || newLength <= oldLength) return
+
+  const newSearches = props.currentSearches.slice(oldLength)
+
+  // IMPORTANT: Limit how many we process at once
+  const MAX_BATCH = 10  // Only process 10 at a time
+  const searchesToProcess = newSearches.slice(0, MAX_BATCH)
+
+  console.log(`📍 Processing ${searchesToProcess.length} of ${newSearches.length} new searches`)
+
+  searchesToProcess.forEach((search, index) => {
+    const shouldShow =
+      (props.showSuccess && search.num_found > 3) ||
+      (props.showLimited && search.num_found > 0 && search.num_found <= 3) ||
+      (props.showNoResults && search.num_found === 0)
+
+    if (!shouldShow) return
+
+    // Process immediately, no setTimeout
+    addPing(search)
+  })
+})
+
+function OLDaddPing(search: any) {
   if (!map || !pingLayer) {
     console.error('❌ Cannot add ping - map not ready')
     return
@@ -236,6 +263,77 @@ function addPing(search: any) {
       }
     }, 1000) // Remove quickly
   }
+}
+
+// Updated addPing function -- make cleanup more aggressive
+function addPing(search: any) {
+  if (!map || !pingLayer) return
+
+  const currentLimit = props.persistPings ? MAX_PERSIST_MARKERS : MAX_ACTIVE_MARKERS
+
+  // More aggressive cleanup - remove 50% when hitting limit
+  if (allMarkers.size >= currentLimit) {
+    const markersToRemove = Math.floor(currentLimit * 0.5)  // Was 0.2, now 0.5
+    const markers = Array.from(allMarkers)
+
+    for (let i = 0; i < markersToRemove && i < markers.length; i++) {
+      const oldMarker = markers[i]
+      if (pingLayer && oldMarker) {
+        pingLayer.removeLayer(oldMarker)
+        allMarkers.delete(oldMarker)
+      }
+    }
+  }
+
+  // Determine color based on results
+  let color = '#10b981' // green
+  let category = 'successful'
+  if (search.num_found === 0) {
+    color = '#ef4444' // red
+    category = 'failed'
+  } else if (search.num_found <= 3) {
+    color = '#f59e0b' // yellow
+    category = 'limited'
+  }
+
+  // Create a SIMPLE marker (less memory)
+  const ping = L.circleMarker([search.latitude, search.longitude], {
+    radius: 6,  // Smaller radius
+    fillColor: color,
+    color: color,
+    weight: 1,  // Thinner border
+    opacity: 0.6,  // Less opacity
+    fillOpacity: 0.4
+  }).addTo(pingLayer)
+
+  // Track this marker
+  allMarkers.add(ping)
+
+  // Update counters
+  counters[category]++
+  counters.total++
+
+  // SIMPLIFIED popup - less memory
+  const popupContent = `<div>${search.locality || 'Unknown'}, ${search.num_found} results</div>`
+  ping.bindPopup(popupContent, {
+    closeButton: false,
+    maxWidth: 200
+  })
+
+  // Remove markers faster if not persisting
+  if (!props.persistPings) {
+    setTimeout(() => {
+      if (pingLayer && ping) {
+        pingLayer.removeLayer(ping)
+        allMarkers.delete(ping)
+        counters[category]--
+        counters.total--
+      }
+    }, 3000)  // Reduced from 5000
+  }
+
+  // Skip radius circles entirely - they're too expensive
+  // No radius circles at all!
 }
 
 // Reset counters every 30 seconds
