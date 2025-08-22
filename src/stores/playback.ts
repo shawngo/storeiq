@@ -12,6 +12,7 @@ interface Search {
   locality: string
   administrative_area: string
   country: string
+  postal_code?: string
   ip_address: string
   uid: number
 }

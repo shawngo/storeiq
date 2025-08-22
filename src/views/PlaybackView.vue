@@ -392,7 +392,7 @@ onMounted(async () => {
   await store.fetchPlaybackData(startDate.value, endDate.value)
   console.log('✅ Ready to play', store.searches.length, 'searches!')
 
-  for (let i = 220; i < 270; i++) {
+  for (let i = 300; i < 323; i++) {
     console.log(`🔍 Search at index ${i}:`, store.searches[i])
   }
 
