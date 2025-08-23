@@ -3,6 +3,7 @@
     <!-- Header -->
     <div class="mb-6">
       <h2 class="text-3xl font-bold text-white mb-2">Linear Time Playback Analysis</h2>
+      <p class="text-white/60 text-sm">{{ dataRangeMessage }}</p>
     </div>
 
     <!-- Playback Controls -->
@@ -12,16 +13,21 @@
           <div class="flex items-center gap-2">
             <label class="text-white/60 text-sm">From:</label>
             <input type="date" v-model="startDate"
-              class="bg-white/10 text-white px-3 py-1 rounded-lg border border-white/20 focus:border-white/40">
+              :disabled="!dataRangeLoaded"
+              class="bg-white/10 text-white px-3 py-1 rounded-lg border border-white/20 focus:border-white/40 disabled:opacity-50">
           </div>
           <div class="flex items-center gap-2">
             <label class="text-white/60 text-sm">To:</label>
             <input type="date" v-model="endDate"
-              class="bg-white/10 text-white px-3 py-1 rounded-lg border border-white/20 focus:border-white/40">
+              :disabled="!dataRangeLoaded"
+              class="bg-white/10 text-white px-3 py-1 rounded-lg border border-white/20 focus:border-white/40 disabled:opacity-50">
           </div>
-          <!-- Show data status -->
+          <!-- Show data status and warning if limit reached -->
           <div class="text-white/60 text-sm ml-4">
             <span v-if="store.loading">Loading...</span>
+            <span v-else-if="store.searches.length === 50000" class="text-yellow-400">
+              ⚠️ Showing first 50k of {{ store.searches.length.toLocaleString() }} searches
+            </span>
             <span v-else>{{ store.searches.length.toLocaleString() }} searches loaded</span>
           </div>
         </div>
@@ -178,6 +184,8 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { usePlaybackStore } from '../stores/playback'
 import LinearSearchMap from '../components/LinearSearchMap.vue'
+import axios from 'axios'
+import { format } from 'date-fns'
 
 const store = usePlaybackStore()
 const mapRef = ref()
@@ -185,9 +193,11 @@ const mapRef = ref()
 // Debug mode
 const showDebug = ref(true)
 
-// Playback state
-const startDate = ref('2023-09-12')
-const endDate = ref('2025-12-31')
+// Playback state - will be set dynamically
+const startDate = ref('')  // Empty initially
+const endDate = ref('')    // Empty initially
+const dataRangeLoaded = ref(false)
+const dataRangeMessage = ref('Loading data range...')
 
 const playbackSpeed = ref(3600) // Default: 1 hour per second
 const isPlaying = ref(false)
@@ -219,7 +229,8 @@ const hourlyStats = ref({
 
 // Watch for date changes
 watch([startDate, endDate], async ([newStart, newEnd], [oldStart, oldEnd]) => {
-  if (newStart !== oldStart || newEnd !== oldEnd) {
+  // Only trigger if both dates are set and actually changed
+  if (newStart && newEnd && (newStart !== oldStart || newEnd !== oldEnd)) {
     console.log(`📅 Date range changed: ${newStart} to ${newEnd}`)
 
     // Stop any ongoing playback
@@ -232,6 +243,37 @@ watch([startDate, endDate], async ([newStart, newEnd], [oldStart, oldEnd]) => {
   }
 })
 
+// Fetch available date range from API
+const fetchDateRange = async () => {
+  try {
+    const response = await axios.get('/api/data-range')
+    if (response.data.status === 'success') {
+      startDate.value = response.data.min_date
+      endDate.value = response.data.max_date
+
+      // Format the message with human-readable dates
+      const minDate = new Date(response.data.min_date)
+      const maxDate = new Date(response.data.max_date)
+      dataRangeMessage.value = `Analyzing store search data from ${format(minDate, 'MMMM d, yyyy')} through ${format(maxDate, 'MMMM d, yyyy')}`
+
+      console.log(`📅 Data range detected: ${startDate.value} to ${endDate.value}`)
+      console.log(`📊 Total records available: ${response.data.total_records}`)
+
+      dataRangeLoaded.value = true
+      return true
+    }
+    return false
+  } catch (error) {
+    console.error('Failed to fetch date range:', error)
+    // Fall back to defaults
+    startDate.value = '2024-01-01'
+    endDate.value = '2025-08-21'
+    dataRangeMessage.value = 'Analyzing store search data'
+    dataRangeLoaded.value = true
+    return false
+  }
+}
+
 // Initialize timeline data
 const initializeTimeline = async () => {
   console.log('🚀 Initializing linear timeline...')
@@ -240,6 +282,13 @@ const initializeTimeline = async () => {
   // Always reload data with current date range
   console.log('📥 Loading data from API...')
   await store.fetchPlaybackData(startDate.value, endDate.value)
+
+  // Check if we hit the limit
+  if (store.searches.length === 50000) {
+    console.warn('⚠️ Data limit reached: showing first 50,000 searches only')
+    // You could show a warning to the user here
+  }
+
   console.log(`✅ Loaded ${store.searches.length} searches`)
 
   // Clear existing index
@@ -280,6 +329,7 @@ const initializeTimeline = async () => {
     console.error('❌ No searches loaded!')
   }
 }
+
 
 
 // Playback engine
@@ -476,25 +526,13 @@ const getResultClass = (numFound: number) => {
 onMounted(async () => {
   console.log('🎬 LinearPlaybackView mounted')
 
-  // Optional: First load with default range to see what's available
-  await initializeTimeline()
+  // First, get the available date range
+  await fetchDateRange()
 
-  // If you want to auto-detect the date range from loaded data:
-  /* */
-  if (store.searches.length > 0) {
-    // Find actual date range in data
-    const dates = store.searches.map(s => new Date(s.timestamp).getTime())
-    const minDate = new Date(Math.min(...dates))
-    const maxDate = new Date(Math.max(...dates))
-
-    // Update date inputs to match actual data range
-    startDate.value = minDate.toISOString().split('T')[0]
-    endDate.value = maxDate.toISOString().split('T')[0]
-
-    // Reload with detected range
+  // Then initialize timeline with detected dates
+  if (dataRangeLoaded.value) {
     await initializeTimeline()
   }
-  // */
 })
 
 
