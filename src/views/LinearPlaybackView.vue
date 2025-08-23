@@ -12,12 +12,17 @@
           <div class="flex items-center gap-2">
             <label class="text-white/60 text-sm">From:</label>
             <input type="date" v-model="startDate"
-              class="bg-white/10 text-white px-3 py-1 rounded-lg">
+              class="bg-white/10 text-white px-3 py-1 rounded-lg border border-white/20 focus:border-white/40">
           </div>
           <div class="flex items-center gap-2">
             <label class="text-white/60 text-sm">To:</label>
             <input type="date" v-model="endDate"
-              class="bg-white/10 text-white px-3 py-1 rounded-lg">
+              class="bg-white/10 text-white px-3 py-1 rounded-lg border border-white/20 focus:border-white/40">
+          </div>
+          <!-- Show data status -->
+          <div class="text-white/60 text-sm ml-4">
+            <span v-if="store.loading">Loading...</span>
+            <span v-else>{{ store.searches.length.toLocaleString() }} searches loaded</span>
           </div>
         </div>
 
@@ -96,7 +101,7 @@
     <div class="grid grid-cols-3 gap-6">
       <!-- Map (2 columns) -->
       <div class="col-span-2">
-        <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-6 h-[600px]">
+        <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-6 h-[800px]">
           <h3 class="text-xl font-bold text-white mb-4">
             Geographic Activity
             <span class="text-sm font-normal text-white/60 ml-2">
@@ -111,7 +116,7 @@
 
       <!-- Activity Feed -->
       <div class="col-span-1">
-        <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-6 h-[600px]">
+        <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-6 h-[800px]">
           <h3 class="text-xl font-bold text-white mb-4">Activity Feed</h3>
 
           <!-- Hourly Stats -->
@@ -134,7 +139,7 @@
           </div>
 
           <!-- Recent Searches -->
-          <div class="space-y-2 overflow-y-auto h-[400px]">
+          <div class="space-y-2 overflow-y-auto h-[575px]">
             <div v-for="search in recentSearches" :key="search.qid"
               class="bg-white/5 rounded-lg p-2 text-sm">
               <div class="text-white/60 text-xs">
@@ -146,6 +151,13 @@
               <div class="text-xs" :class="getResultClass(search.num_found)">
                 {{ search.num_found }} results • {{ search.radius_miles }}mi
               </div>
+              <!-- Add IP address link -->
+              <a v-if="search.ip_address"
+                :href="`https://ipinfo.io/${search.ip_address}`"
+                target="_blank"
+                class="text-xs text-purple-400 hover:text-yellow-400 transition-colors">
+                IP: {{ search.ip_address }} →
+              </a>
             </div>
           </div>
         </div>
@@ -163,7 +175,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { usePlaybackStore } from '../stores/playback'
 import LinearSearchMap from '../components/LinearSearchMap.vue'
 
@@ -174,8 +186,9 @@ const mapRef = ref()
 const showDebug = ref(true)
 
 // Playback state
-const startDate = ref('2024-01-01')
-const endDate = ref('2024-12-31')
+const startDate = ref('2023-09-12')
+const endDate = ref('2025-12-31')
+
 const playbackSpeed = ref(3600) // Default: 1 hour per second
 const isPlaying = ref(false)
 const mapTimeWindow = ref(5) // Show last 5 minutes of searches on map
@@ -204,19 +217,36 @@ const hourlyStats = ref({
   failed: 0
 })
 
+// Watch for date changes
+watch([startDate, endDate], async ([newStart, newEnd], [oldStart, oldEnd]) => {
+  if (newStart !== oldStart || newEnd !== oldEnd) {
+    console.log(`📅 Date range changed: ${newStart} to ${newEnd}`)
+
+    // Stop any ongoing playback
+    if (isPlaying.value) {
+      stopPlayback()
+    }
+
+    // Reinitialize with new date range
+    await initializeTimeline()
+  }
+})
+
 // Initialize timeline data
 const initializeTimeline = async () => {
   console.log('🚀 Initializing linear timeline...')
+  console.log(`📅 Date range: ${startDate.value} to ${endDate.value}`)
 
-  // Load data if not already loaded
-  if (store.searches.length === 0) {
-    console.log('📥 Loading data from API...')
-    await store.fetchPlaybackData(startDate.value, endDate.value)
-    console.log(`✅ Loaded ${store.searches.length} searches`)
-  }
+  // Always reload data with current date range
+  console.log('📥 Loading data from API...')
+  await store.fetchPlaybackData(startDate.value, endDate.value)
+  console.log(`✅ Loaded ${store.searches.length} searches`)
 
   // Clear existing index
   searchesBySecond.value.clear()
+  visibleSearches.value = []
+  recentSearches.value = []
+  totalProcessed.value = 0
 
   // Index searches by second
   let minTime = Infinity
@@ -250,6 +280,7 @@ const initializeTimeline = async () => {
     console.error('❌ No searches loaded!')
   }
 }
+
 
 // Playback engine
 const startPlayback = () => {
@@ -444,8 +475,28 @@ const getResultClass = (numFound: number) => {
 // Lifecycle
 onMounted(async () => {
   console.log('🎬 LinearPlaybackView mounted')
+
+  // Optional: First load with default range to see what's available
   await initializeTimeline()
+
+  // If you want to auto-detect the date range from loaded data:
+  /* */
+  if (store.searches.length > 0) {
+    // Find actual date range in data
+    const dates = store.searches.map(s => new Date(s.timestamp).getTime())
+    const minDate = new Date(Math.min(...dates))
+    const maxDate = new Date(Math.max(...dates))
+
+    // Update date inputs to match actual data range
+    startDate.value = minDate.toISOString().split('T')[0]
+    endDate.value = maxDate.toISOString().split('T')[0]
+
+    // Reload with detected range
+    await initializeTimeline()
+  }
+  // */
 })
+
 
 onUnmounted(() => {
   stopPlayback()

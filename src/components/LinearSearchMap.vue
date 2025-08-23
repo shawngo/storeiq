@@ -1,10 +1,10 @@
 <template>
-  <div class="relative w-full h-full">
+  <div class="relative w-full h-[95%]">
     <!-- Map Container -->
     <div ref="mapContainer" class="w-full h-full rounded-lg"></div>
 
     <!-- Display Mode Toggle -->
-    <div class="absolute top-4 left-4 bg-black/50 backdrop-blur-lg rounded-lg p-2 z-[1000]">
+    <div class="absolute top-4 left-16 bg-black/50 backdrop-blur-lg rounded-lg p-2 z-[1000]">
       <div class="flex gap-1">
         <button @click="displayMode = 'dots'"
           :class="['px-3 py-1 rounded text-xs font-medium transition-all',
@@ -85,7 +85,6 @@ const showTrails = ref(false)
 const activeMarkers = new Map<string, { marker: L.CircleMarker, timestamp: number }>()
 const markerPool: L.CircleMarker[] = [] // Reuse markers for performance
 const MAX_MARKERS = 100 // Keep up to 100 markers on screen
-const MARKER_PERSIST_TIME = 10 * 60 * 1000 // Keep markers for 10 minutes of playback time
 
 // Stats
 const stats = ref({
@@ -193,17 +192,6 @@ function updateDots(searches: any[]) {
   // For linear playback, we want to show ALL searches passed to us
   // The parent component manages the time window
 
-  // First, get the latest timestamp from the searches to use as reference
-  let latestTime = 0
-  searches.forEach(s => {
-    const t = new Date(s.timestamp).getTime()
-    if (t > latestTime) latestTime = t
-  })
-
-  // Use a longer persist time for markers (10 minutes of playback time)
-  const cutoffTime = latestTime ? latestTime - MARKER_PERSIST_TIME : 0
-
-  console.log(`⏰ Keeping markers from last ${MARKER_PERSIST_TIME / 60000} minutes`)
   console.log(`📍 Current markers: ${activeMarkers.size}, Max: ${MAX_MARKERS}`)
 
   // If we have too many markers, remove the oldest ones
@@ -220,16 +208,6 @@ function updateDots(searches: any[]) {
     })
     console.log(`🗑️ Removed ${toRemove.length} old markers to stay under limit`)
   }
-
-  // Remove expired markers based on the playback time
-  activeMarkers.forEach((data, id) => {
-    if (data.timestamp < cutoffTime) {
-      // Return marker to pool for reuse
-      data.marker.remove()
-      markerPool.push(data.marker)
-      activeMarkers.delete(id)
-    }
-  })
 
   // Add new searches
   searches.forEach(search => {
@@ -278,7 +256,7 @@ function updateDots(searches: any[]) {
     // Add to map
     marker.addTo(markersLayer!)
 
-    // Enhanced popup with more info
+    // Enhanced popup with more info and IP link
     marker.bindPopup(`
       <div class="text-sm">
         <strong>${search.locality || 'Unknown'}</strong><br>
@@ -286,7 +264,8 @@ function updateDots(searches: any[]) {
         <span style="color: ${color}">
           ${search.num_found} results
         </span><br>
-        Search radius: ${search.radius_miles}mi
+        Search radius: ${search.radius_miles}mi<br>
+        ${search.ip_address ? `<a href="https://ipinfo.io/${search.ip_address}" target="_blank" style="color: #a78bfa; text-decoration: none;">IP: ${search.ip_address} →</a>` : ''}
       </div>
     `)
 
@@ -432,52 +411,25 @@ let updateInterval: number | null = null
 
 function startUpdateLoop() {
   updateInterval = window.setInterval(() => {
-    // Remove expired markers or limit to MAX_MARKERS
-    if (displayMode.value === 'dots' && props.searches.length > 0) {
-      // Get the latest timestamp from current searches
-      let latestTime = 0
-      props.searches.forEach(s => {
-        const t = new Date(s.timestamp).getTime()
-        if (t > latestTime) latestTime = t
+    // Only enforce MAX_MARKERS limit, no time-based removal
+    if (displayMode.value === 'dots' && activeMarkers.size > MAX_MARKERS) {
+      const sortedMarkers = Array.from(activeMarkers.entries())
+        .sort((a, b) => a[1].timestamp - b[1].timestamp)
+
+      const toRemove = sortedMarkers.slice(0, activeMarkers.size - MAX_MARKERS)
+      toRemove.forEach(([id, data]) => {
+        const marker = data.marker
+        marker.setStyle({ opacity: 0.3, fillOpacity: 0.1 })
+
+        setTimeout(() => {
+          marker.remove()
+          markerPool.push(marker)
+          activeMarkers.delete(id)
+        }, 500)
       })
-
-      const cutoffTime = latestTime - MARKER_PERSIST_TIME
-
-      // Remove old markers that are beyond the persist time
-      activeMarkers.forEach((data, id) => {
-        if (data.timestamp < cutoffTime) {
-          // Fade out before removing
-          const marker = data.marker
-          marker.setStyle({ opacity: 0.3, fillOpacity: 0.1 })
-
-          setTimeout(() => {
-            marker.remove()
-            markerPool.push(marker)
-            activeMarkers.delete(id)
-          }, 500)
-        }
-      })
-
-      // Also enforce MAX_MARKERS limit
-      if (activeMarkers.size > MAX_MARKERS) {
-        const sortedMarkers = Array.from(activeMarkers.entries())
-          .sort((a, b) => a[1].timestamp - b[1].timestamp)
-
-        const toRemove = sortedMarkers.slice(0, activeMarkers.size - MAX_MARKERS)
-        toRemove.forEach(([id, data]) => {
-          const marker = data.marker
-          marker.setStyle({ opacity: 0.3, fillOpacity: 0.1 })
-
-          setTimeout(() => {
-            marker.remove()
-            markerPool.push(marker)
-            activeMarkers.delete(id)
-          }, 500)
-        })
-      }
-
-      stats.value.active = activeMarkers.size
     }
+
+    stats.value.active = activeMarkers.size
   }, 1000) // Update every second
 }
 
